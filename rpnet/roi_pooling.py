@@ -1,39 +1,53 @@
 import torch
 import torch.autograd as ag
 from torch.autograd.function import Function
-from torch._thnn import type2backend
+import torch.nn.functional as F
+from torch.nn.functional import adaptive_max_pool2d
+# from torch._thnn import type2backend
 
 
-class AdaptiveMaxPool2d(Function):
-    def __init__(self, out_w, out_h):
-        super(AdaptiveMaxPool2d, self).__init__()
-        self.out_w = out_w
-        self.out_h = out_h
+# class AdaptiveMaxPool2d(Function):
+#     def __init__(self, out_w, out_h):
+#         super(AdaptiveMaxPool2d, self).__init__()
+#         self.out_w = out_w
+#         self.out_h = out_h
 
-    def forward(self, input):
-        output = input.new()
-        indices = input.new().long()
-        self.save_for_backward(input)
-        self.indices = indices
-        self._backend = type2backend[type(input)]
-        self._backend.SpatialAdaptiveMaxPooling_updateOutput(
-            self._backend.library_state, input, output, indices,
-            self.out_w, self.out_h)
-        return output
+#     def forward(self, input):
+#         output = input.new()
+#         indices = input.new().long()
+#         self.save_for_backward(input)
+#         self.indices = indices
+#         # self._backend = type2backend[type(input)]
+#         self._backend.SpatialAdaptiveMaxPooling_updateOutput(
+#             self._backend.library_state, input, output, indices,
+#             self.out_w, self.out_h)
+#         return output
 
-    def backward(self, grad_output):
-        input, = self.saved_tensors
-        indices = self.indices
-        grad_input = grad_output.new()
-        self._backend.SpatialAdaptiveMaxPooling_updateGradInput(
-            self._backend.library_state, input, grad_output, grad_input,
-            indices)
-        return grad_input, None
+#     def backward(self, grad_output):
+#         input, = self.saved_tensors
+#         indices = self.indices
+#         grad_input = grad_output.new()
+#         self._backend.SpatialAdaptiveMaxPooling_updateGradInput(
+#             self._backend.library_state, input, grad_output, grad_input,
+#             indices)
+#         return grad_input, None
 
+
+# def adaptive_max_pool(input, size):
+#     return AdaptiveMaxPool2d(size[0], size[1])(input)
+
+class AdaptiveMaxPool2d(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, input, output_size):
+        ctx.output_size = output_size
+        return adaptive_max_pool2d(input, output_size)
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        return torch.nn.grad.adaptive_max_pool2d_backward(grad_output, ctx.saved_tensors[0], ctx.output_size), None
 
 def adaptive_max_pool(input, size):
-    return AdaptiveMaxPool2d(size[0], size[1])(input)
-
+    return AdaptiveMaxPool2d.apply(input, size)
 
 def roi_pooling(input, rois, size=(7, 7), spatial_scale=1.0):
     assert (rois.dim() == 2)
